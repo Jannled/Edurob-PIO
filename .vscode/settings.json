@@ -1,0 +1,25 @@
+{
+    // Editor formatting
+    "editor.tabSize": 4,
+    "editor.insertSpaces": false,
+    "editor.detectIndentation": false,
+
+    // Display formatting aid
+	"editor.rulers": [79, 120],
+
+	"[git-commit]": {
+		"editor.rulers": [50]
+	},
+
+	// EINFG / INSERT
+	"overtype.perEditor": false,
+	"overtype.paste": true,
+
+    //
+    "files.associations": {
+        "cstdio": "cpp",
+        "fstream": "cpp",
+        "iostream": "cpp",
+        "*.tcc": "cpp"
+    }
+}

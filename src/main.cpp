@@ -4,9 +4,9 @@
 #define ROS_CON_WIFI // Use WIFI instead of Serial (USB)
 
 // #define MECANUM
-// #define DIFF
+#define DIFF
 // #define OMNI4
-#define OMNI3
+// #define OMNI3
 
 #ifdef ROS_EN
 #define RCCHECK(fn)                  \
@@ -41,6 +41,12 @@
 #include <Eigen.h>       // Linear math
 #include <Eigen/QR>      // Calls inverse, determinant, LU decomp., etc.
 using namespace Eigen;   // Eigen related statement; simplifies syntax for declaration of matrices
+
+#ifdef ROS_CON_WIFI
+#include "SPIFFS.h"
+#include "cpp/INIReader.h"
+#include "lwip/inet.h"
+#endif // ROS_CON_WIFI
 
 #ifdef ROS_EN
 // ROS
@@ -225,7 +231,16 @@ void initPID()
 		speedControllerParam[i].outMin = -100;
 		speedControllerParam[i].outMax = 100;
 
-		speedController[i] = new AutoPID(&speedControllerParam[i].input, &speedControllerParam[i].setpoint, &speedControllerParam[i].output, speedControllerParam[i].outMin, speedControllerParam[i].outMax, speedControllerParam[i].p, speedControllerParam[i].i, speedControllerParam[i].d);
+		speedController[i] = new AutoPID(
+			&speedControllerParam[i].input,
+			&speedControllerParam[i].setpoint,
+			&speedControllerParam[i].output,
+			speedControllerParam[i].outMin,
+			speedControllerParam[i].outMax,
+			speedControllerParam[i].p,
+			speedControllerParam[i].i,
+			speedControllerParam[i].d
+		);
 		speedController[i]->setTimeStep(speedControllerParam[i].sampleTimeMs);
 		speedController[i]->setBangBang(0, 0); // Disable BangBang-Controll
 	}
@@ -451,9 +466,38 @@ void setup()
 
 #ifdef ROS_EN
 #ifdef ROS_CON_WIFI
-	Serial.println("Connecting via Wifi...");
+	#define CONFIG_FNAME "/config.ini"
 
-	set_microros_wifi_transports("FRITZ!Box 7520 JJJ", "Lindemann36", IPAddress(192, 168, 178, 197), 8888);
+	// Read the config.ini file from spiffs
+	log_i("Reading " CONFIG_FNAME);
+	if(!SPIFFS.begin(true))
+	{
+		log_i("Unable to communicate with SPIFFS.");
+		return;
+	}
+
+	File f = SPIFFS.open(CONFIG_FNAME);
+	char buff[512];
+	f.readBytes(buff, sizeof(buff));
+
+	INIReader reader(buff, sizeof(buff));
+	if(reader.ParseError() != 0)
+		log_w("Invalid line in config: %d", reader.ParseError());
+
+	std::string ssid = reader.GetString("edurob", "SSID", "INVALID");
+	std::string passwd = reader.GetString("edurob", "passwd", "NOTAPASSWORD");
+	std::string agent_ip = reader.GetString("edurob", "agent_ip", "192.168.1.1");
+	int64_t port = reader.GetInteger64("edurob", "client_port", 8888);
+	
+	uint8_t ipaddr[4] = {0};
+	uint8_t i = 0;
+
+	// Connect to uROS Agent via WiFi
+	log_i("Connecting via Wifi...");
+	set_microros_wifi_transports(
+		(char*) ssid.c_str(), (char*) passwd.c_str(), 
+		IPAddress(inet_addr(agent_ip.c_str())), port
+	);
 	Serial.print("Connected via Wifi (IP: ");
 	Serial.print(WiFi.localIP());
 	Serial.println(")");

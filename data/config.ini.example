@@ -1,0 +1,5 @@
+[edurob]
+SSID=YourWifiName
+passwd=YourPassword123
+agent_ip=Your.PC.IP.Adress
+client_port=8888
