@@ -5,6 +5,7 @@
         "platformio.platformio-ide"
     ],
     "unwantedRecommendations": [
+        "ms-azuretools.vscode-docker",
         "ms-vscode.cpptools-extension-pack"
     ]
 }
