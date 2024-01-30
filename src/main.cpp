@@ -568,7 +568,6 @@ void loop()
 
 	if (rmw_uros_epoch_synchronized())
 	{
-
 		speedData[0] = sqrt(robotOdomSpeed[0] * robotOdomSpeed[0] + robotOdomSpeed[1] * robotOdomSpeed[1]) * 1000; // Current Speed in mm/s
 		speedData[1] = robotOdomSpeed[2] * 1000;                                                                   // Current rotational speed in mrad/s
 		messageSpeed.speeds.capacity = 2;
