@@ -3,10 +3,10 @@
 #define ROS_EN
 #define ROS_CON_WIFI // Use WIFI instead of Serial (USB)
 
-// #define MECANUM
-#define DIFF
-// #define OMNI4
-// #define OMNI3
+//#define MECANUM
+//#define DIFF
+#define OMNI4
+//#define OMNI3
 
 #ifdef ROS_EN
 #define RCCHECK(fn)                  \
@@ -161,6 +161,10 @@ void subscription_callback(const void *msgin)
 {
 	const geometry_msgs__msg__Twist *msga = (const geometry_msgs__msg__Twist *)msgin;
 	robotSpeedSetpoint << msga->linear.x, msga->linear.y, msga->angular.z;
+	log_i("Twist (x: %.4f m/s, y: %.4f m/s, a: %.4f°, b: %.4f°)", 
+		msga->linear.x, msga->linear.x, 
+		msga->angular.x, msga->angular.y
+	);
 }
 
 // Print content of Eigen::MatrixXd
@@ -246,7 +250,7 @@ void initPID()
 	}
 }
 
-// Init platformspecific kinematics
+// Init platform specific kinematics
 void initMatrix()
 {
 
