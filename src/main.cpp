@@ -221,8 +221,8 @@ void initPID()
 		speedControllerParam[i].input = 0;
 		speedControllerParam[i].output = 0;
 		speedControllerParam[i].setpoint = 0;
-		speedControllerParam[i].p = 0.04;
-		speedControllerParam[i].i = 0.08;
+		speedControllerParam[i].p = 1.0;
+		speedControllerParam[i].i = 0.2;
 		speedControllerParam[i].d = 0.0;
 		speedControllerParam[i].sampleTimeMs = sampleTime;
 		speedControllerParam[i].outMin = -(nMax / 60.0) * M_TWOPI;

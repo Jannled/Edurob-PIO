@@ -43,11 +43,11 @@ static const int NumMotors = 4;                                          // Numb
 static const int sampleTime = 5;                                         // Sample time in ms
 static const int gearing = 150.0;                                        // Number of motor rotations per wheel rotation
 static const int encoderSteps = 12;                                      // Number of encoder increments per motor rotation
-static const double incrementsToRad = 2 * PI / (encoderSteps * gearing); // Conversion from encoder increments to rad
-static const double circumference = (2 * PI * wheelRadius);              // Circumference in meters
-static const double msToRads = (2 * PI) / circumference;                 // Conversion from m/s to rad/s
+static const double incrementsToRad = M_TWOPI / (encoderSteps * gearing); // Conversion from encoder increments to rad
+static const double circumference = M_TWOPI * wheelRadius;              // Circumference in meters
+static const double msToRads = M_TWOPI / circumference;                 // Conversion from m/s to rad/s
 static const int nMax = 160;                                             // Maximum revolutions / min from the motor
-static double Rad2PWM = 100.0/((nMax / 60.0)*  2*PI);                    // Conversion from rad/s to pwm duty cycle 100 to adapt from -1 und 1 -100 to 100 ((nMax / 60.0)*  2*PI) Conversion RPM to rad/s
+static double Rad2PWM = 100.0/((nMax / 60.0) * M_TWOPI);                    // Conversion from rad/s to pwm duty cycle 100 to adapt from -1 und 1 -100 to 100 ((nMax / 60.0)*  2*PI) Conversion RPM to rad/s
 
 // Motor numbering
 // |2|--|1|
