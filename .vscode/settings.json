@@ -22,5 +22,25 @@
         "iostream": "cpp",
         "*.tcc": "cpp"
 	},
-	"cmake.configureOnOpen": false
+	"cmake.configureOnOpen": false,
+	"cSpell.words": [
+		"DCPWM",
+		"Edurob",
+		"Eigen",
+		"GPIO",
+		"KINEMATIK",
+		"mecanum",
+		"microros",
+		"mtxd",
+		"ncol",
+		"Odometry",
+		"RCCHECK",
+		"rclc",
+		"RCSOFTCHECK",
+		"ROSIDL",
+		"Setpoint",
+		"setpoints",
+		"tfstatic",
+		"uros"
+	]
 }
