@@ -35,7 +35,7 @@ static const float maxTSpeed = 0.4;            // Maximum translational speed in
 static const float maxRSpeed = 1.5;            // Maximum rotational speed in rad/s
 static const float maxTAccel = 0.7;            // Maximum translational acceleration in m/s²
 static const float maxRAccel = 1.5;            // Maximum rotational acceleration in rad/s²
-static const int EncoderDir[4] = {-1, -1, -1, -1}; // Counting direction of encoder channels (+1 or -1)
+static const int EncoderDir[4] = {1, 1, 1, 1}; // Counting direction of encoder channels (+1 or -1)
 static const int MotorDir[4] = {1, 1, 1, 1};   // Direction of motors (+1 or -1)
 // #############-USER-CODE-END-#####################
 
@@ -55,10 +55,10 @@ static double Rad2PWM = 100.0/((nMax / 60.0) * M_TWOPI);                    // C
 // |3|--|4|
 
 // Pin definitions
-static const int PWM_A[4] = {25, 5, 14, 21};  // GPIO PWM channel A
-static const int PWM_B[4] = {26, 18, 27, 22}; // GPIO PWM channel B
-static const int Enc_A[4] = {32, 10, 36, 19}; // GPIO Encoder channel A
-static const int Enc_B[4] = {33, 9, 39, 23};  // GPIO Encoder channel B
+static const int PWM_A[4] = {14, 25, 22, 18};  // GPIO PWM channel A
+static const int PWM_B[4] = {27, 26, 21, 5}; // GPIO PWM channel B
+static const int Enc_A[4] = {39, 33, 19, 10}; // GPIO Encoder channel A
+static const int Enc_B[4] = {36, 32, 23, 9};  // GPIO Encoder channel B
 static const int EnablePIN = 12;              // Enable Signal pin for motor drivers
 
 typedef struct pidParam

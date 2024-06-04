@@ -25,6 +25,7 @@
 	"cmake.configureOnOpen": false,
 	"cSpell.words": [
 		"DCPWM",
+		"dutycycle",
 		"Edurob",
 		"Eigen",
 		"GPIO",

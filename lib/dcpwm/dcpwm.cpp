@@ -3,7 +3,7 @@
 /* ESP32 has 2 Motorcontroller PWM units with 3 timers, 3 operators and 6 PWM outputs
 */
 
-bool DCPWM::init(int frequency, int resolution, int channelA,int channelB,  int pinA, int pinB)
+bool DCPWM::init(int frequency, int resolution, int channelA, int channelB, int pinA, int pinB)
 {
   _frequency = frequency;
   _resolution = resolution;

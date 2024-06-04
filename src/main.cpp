@@ -84,16 +84,15 @@ int windowIndex = 0;                 // Currently accessed cell of inputs[motorN
 static double setpointSpeed[NumMotors]; // Motor speed setpoints
 
 // Matrix
-MatrixXd kinematik(4, 3);    // Kinematics matrix for differential
-MatrixXd kinematikInv(3, 4); // Inverse Kinematics matrix for differential
-Vector3d robotSpeedSetpoint; // Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
-Vector3d robotSpeed;         // Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
-Vector3d robotSpeedMax;      // Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
-Vector3d robotSpeedAcc;      // Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
-Vector4d wheelSpeedSetpoint; // Wheel speeds in rad/s
-Vector3d robotOdom;          // Odometry Position
-Vector4d robotWheelSpeed;    // Current wheel speeds
-Vector3d robotOdomSpeed;     // Odometry Speed
+MatrixXd kinematik(4, 3);    // Kinematics matrix
+MatrixXd kinematikInv(3, 4); // Inverse Kinematics matrix
+
+Vector3d target_robot_speed; 	// Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
+Vector4d target_wheel_speed;    // Target Wheel speeds in rad/s
+Vector4d target_odom_speed;     // Target Odometry Speed
+
+Vector3d current_robot_speed;         // Vector with translational and rotational robot speeds in m/s and rad/s  (X(m/s), Y(m/s), Z(rad/s))
+
 double rosQuaternion[4];     // Quaternion for ROS transform message
 
 #ifdef ROS_EN
@@ -155,35 +154,48 @@ const void rotate2D(float r, double &x, double &y)
 void subscription_callback(const void *msg_in)
 {
 	const geometry_msgs__msg__Twist *msg = (const geometry_msgs__msg__Twist *)msg_in;
-	robotSpeedSetpoint << msg->linear.x, msg->linear.y, msg->angular.z;
+	target_robot_speed << msg->linear.x, msg->linear.y, msg->angular.z;
 }
 
 #endif //ROS_EN
 
-// Print content of Eigen::MatrixXd
-void print_mtxd(const Eigen::MatrixXd &X)
+bool initROS2()
 {
-	int i, j, nrow, ncol;
+	allocator = rcl_get_default_allocator();
+	// create init_options
+	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
+	// create node
+	RCCHECK(rclc_node_init_default(&node, "Edurob", "", &support));
+	// create tf publisher
+	RCCHECK(rclc_publisher_init_default(
+			&publisherTf,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(tf2_msgs, msg, TFMessage),
+			"/tf"));
 
-	nrow = X.rows();
-	ncol = X.cols();
+	// create tf publisher
+	// Set publisher QoS
+	rmw_qos_profile_t rmw_qos_profile_tfstatic = {RMW_QOS_POLICY_HISTORY_KEEP_LAST, 10U, RMW_QOS_POLICY_RELIABILITY_RELIABLE, RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL, {0ULL, 0ULL}, {0ULL, 0ULL}, RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT, {0ULL, 0ULL}, false};
 
-	Serial.print("nrow: ");
-	Serial.println(nrow);
-	Serial.print("ncol: ");
-	Serial.println(ncol);
-	Serial.println();
+	RCCHECK(rclc_publisher_init(
+			&publisherTfStatic,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(tf2_msgs, msg, TFMessage),
+			"/tf_static",
+			&rmw_qos_profile_tfstatic));
 
-	for (i = 0; i < nrow; i++)
-	{
-		for (j = 0; j < ncol; j++)
-		{
-			Serial.print(X(i, j), 6); // print 6 decimal places
-			Serial.print(", ");
-		}
-		Serial.println();
-	}
-	Serial.println();
+	// create subscriber
+	RCCHECK(rclc_subscription_init_default(
+			&twistSubscriber,
+			&node,
+			ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
+			"cmd_vel"));
+
+	// create executor
+	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
+	RCCHECK(rclc_executor_add_subscription(&executor, &twistSubscriber, &twistMessage, &subscription_callback, ON_NEW_DATA));
+
+	return true;
 }
 
 // Init Encoder- and PWM-Units
@@ -194,18 +206,15 @@ bool initHardware()
 	for (int i = 0; i < NumMotors; i++)
 	{
 		if (!WheelEncoder[i].init(i, Enc_A[i], Enc_B[i]))
-		{
 			return false;
-		}
 	}
 
 	int currentChannel = 0;
 	for (int i = 0; i < NumMotors; i++)
 	{
 		if (!MotorPWM[i].init(30000, 10, currentChannel, currentChannel + 1, PWM_A[i], PWM_B[i]))
-		{
 			return false;
-		}
+		
 		MotorPWM[i].setPWM(0); // Set initial speed to 0
 		currentChannel += 2;
 	}
@@ -221,14 +230,24 @@ void initPID()
 		speedControllerParam[i].input = 0;
 		speedControllerParam[i].output = 0;
 		speedControllerParam[i].setpoint = 0;
-		speedControllerParam[i].p = 1.0;
-		speedControllerParam[i].i = 0.2;
+		speedControllerParam[i].p = 0.8;
+		speedControllerParam[i].i = 0.0;
 		speedControllerParam[i].d = 0.0;
 		speedControllerParam[i].sampleTimeMs = sampleTime;
-		speedControllerParam[i].outMin = -(nMax / 60.0) * M_TWOPI;
-		speedControllerParam[i].outMax = (nMax / 60.0) * M_TWOPI;
+		speedControllerParam[i].outMin = -100.0; // %
+		speedControllerParam[i].outMax = +100.0; // %
 
-		speedController[i] = new AutoPID(&speedControllerParam[i].input, &speedControllerParam[i].setpoint, &speedControllerParam[i].output, speedControllerParam[i].outMin, speedControllerParam[i].outMax, speedControllerParam[i].p, speedControllerParam[i].i, speedControllerParam[i].d);
+		speedController[i] = new AutoPID(
+			&speedControllerParam[i].input, 
+			&speedControllerParam[i].setpoint, 
+			&speedControllerParam[i].output, 
+			speedControllerParam[i].outMin, 
+			speedControllerParam[i].outMax, 
+			speedControllerParam[i].p, 
+			speedControllerParam[i].i, 
+			speedControllerParam[i].d
+		);
+
 		speedController[i]->setTimeStep(speedControllerParam[i].sampleTimeMs);
 		speedController[i]->setBangBang(0, 0); // Disable BangBang-Control
 	}
@@ -237,139 +256,66 @@ void initPID()
 // Init platform specific kinematics
 void initMatrix()
 {
-
-#ifdef MECANUM
-	// Mecanum
+#if defined(MECANUM) // Mecanum
 	mecanum_matrix(kinematik, kinematikInv, l1, l2); // sets the kinematik and kinematikInv to the desired values
-#endif
 
-#ifdef DIFF
-	// Diff
+#elif defined(DIFF) // Diff
 	differential_matrix(kinematik, kinematikInv, l1, l2); // sets the kinematik and kinematikInv to the desired values
 
-#endif
-
-#ifdef OMNI4
-	// Omni 4 Wheels
+#elif defined(OMNI4) // Omni 4 Wheels
 	omni_4_matrix(kinematik, kinematikInv, l1, l2); // sets the kinematik and kinematikInv to the desired values
-#endif
 
-#ifdef OMNI3
-	// Omni 3 Wheels
+#elif defined(OMNI3) // Omni 3 Wheels
 	omni_3_matrix(kinematik, kinematikInv, l1, l2); // sets the kinematik and kinematikInv to the desired values
 #endif
-
-	robotSpeedSetpoint << 0.0,
-			0.0,
-			0.0;
-
-	robotSpeedAcc << maxTAccel, maxTAccel, maxRAccel;
-	robotSpeedMax << maxTSpeed, maxTSpeed, maxRSpeed;
-	wheelSpeedSetpoint = (1 / wheelRadius) * kinematik * robotSpeedSetpoint;
 }
 
-// Speed controller task
-void speedControllerTask(void *pvParameters)
+
+void task_drive()
 {
-	TickType_t xLastWakeTime = xTaskGetTickCount();
-	const TickType_t xFrequency = pdMS_TO_TICKS(sampleTime);
+	target_wheel_speed = (1 / wheelRadius) * kinematik * target_robot_speed; // rad/s
+	target_odom_speed = target_wheel_speed / incrementsToRad; // increments/s
 
-	for (int i = 0; i < NumMotors; i++)
+	// Read
+	for(int i = 0; i < NumMotors; i++)
 	{
-		input_sum[i] = 0;
+		// Store old encoder values and read new ones
+		encoderOld[i] = encoderNew[i];
+		encoderNew[i] = EncoderDir[i] * WheelEncoder[i].getCount();
+
+		const double measured_odom = (encoderNew[i] - encoderOld[i]) / (millis()/1000u);
+		const double measured_duty = measured_odom * Rad2PWM;
+
+		speedControllerParam[i].input = min(100.0, max(-100.0, measured_duty));
+
+		const double target_duty = target_odom_speed[i] * Rad2PWM;
+		speedControllerParam[i].setpoint = min(100.0, max(-100.0, target_duty)); // dutycycle in %
+		// Serial.print(target_wheel_speed[i]);
+		// Serial.print(" -> ");
+		// Serial.print(target_odom_speed[i]);
+		// Serial.print(" -> ");
+		// Serial.println(target_duty);
 	}
 
-	for (int i = 0; i < NumMotors; i++)
-	{
-		for (int k = 0; k < windowSize; k++)
-		{
-			inputs[i][k] = 0;
-		}
-	}
+	// Plan
+	for(int i = 0; i < NumMotors; i++)
+		speedController[i]->run();
 
-	while (true)
-	{
-		vTaskDelayUntil(&xLastWakeTime, xFrequency);
-		for (int i = 0; i < 3; i++)
-		{
-			if (robotSpeed[i] > robotSpeedSetpoint[i])
-			{
-				robotSpeed[i] = robotSpeed[i] - (robotSpeedAcc[i] * 0.005);
-			}
-			else if (robotSpeed[i] < robotSpeedSetpoint[i])
-			{
-				robotSpeed[i] = robotSpeed[i] + (robotSpeedAcc[i] * 0.005);
-			}
+	// Act
+	for(int i = 0; i < NumMotors; i++)
+		MotorPWM[i].setPWM(MotorDir[i] * speedControllerParam[i].output);
 
-			if (robotSpeed[i] > robotSpeedMax[i])
-			{
-				robotSpeed[i] = robotSpeedMax[i];
-			}
-			else if (robotSpeed[i] < -robotSpeedMax[i])
-			{
-				robotSpeed[i] = -robotSpeedMax[i];
-			}
+	Serial.printf(">i1:%.4f\n", speedControllerParam[0].input);
+	Serial.printf(">i2:%.4f\n", speedControllerParam[1].input);
+	Serial.printf(">i3:%.4f\n", speedControllerParam[2].input);
+	Serial.printf(">i4:%.4f\n", speedControllerParam[3].input);
 
-			if (robotSpeed[i] < 0.000001 && robotSpeed[i] > -0.000001)
-			{
-				robotSpeed[i] = 0;
-			}
-		}
-		wheelSpeedSetpoint = (1 / wheelRadius) * kinematik * robotSpeed;
-		for (int i = 0; i < NumMotors; i++)
-		{
-			if (abs(wheelSpeedSetpoint[i]) < 0.15)
-			{
-				wheelSpeedSetpoint[i] = 0;
-			}
-		}
-
-		for (int i = 0; i < NumMotors; i++)
-		{
-			speedControllerParam[i].setpoint = wheelSpeedSetpoint(i, 0);
-			encoderNew[i] = EncoderDir[i] * WheelEncoder[i].getCount();
-
-			input_sum[i] -= inputs[i][windowIndex];
-			inputs[i][windowIndex] = ((((encoderNew[i] - encoderOld[i]) * incrementsToRad) / sampleTime) * 1000);
-			input_sum[i] += inputs[i][windowIndex];
-
-			speedControllerParam[i].input = input_sum[i] / windowSize; // Filtered
-
-			speedController[i]->run();
-
-			MotorPWM[i].setPWM(MotorDir[i] * speedControllerParam[i].output * Rad2PWM); // Raw
-			encoderOld[i] = encoderNew[i];
-		}
-		for (int i = 0; i < NumMotors; i++)
-		{
-			robotWheelSpeed[i] = inputs[i][windowIndex];
-		}
-
-		robotOdomSpeed = (wheelRadius * kinematikInv * robotWheelSpeed);
-
-		robotOdomSpeed = robot_vel_to_world_vel(robotOdom[2],robotOdomSpeed);// Conversion Velocity in robot coordinates to velocity in world coordinates
-
-		robotOdom[0] = robotOdomSpeed[0] * sampleTime/1000 + robotOdom[0];
-		robotOdom[1] = robotOdomSpeed[1] * sampleTime/1000 + robotOdom[1];
-		robotOdom[2] = robotOdomSpeed[2] * sampleTime/1000 + robotOdom[2];  
-		windowIndex = (windowIndex + 1) % windowSize;
-	}
+	Serial.printf(">o1:%.4f\n", speedControllerParam[0].output);
+	Serial.printf(">o2:%.4f\n", speedControllerParam[1].output);
+	Serial.printf(">o3:%.4f\n", speedControllerParam[2].output);
+	Serial.printf(">o4:%.4f\n", speedControllerParam[3].output);
 }
 
-// Logger task
-void loggerTask(void *pvParameters)
-{
-	while (true)
-	{
-		vTaskDelay(pdMS_TO_TICKS(5));
-		//   Serial.print("Odometry: Xt= ");
-		//   Serial.print(robotOdom[0]);  //current x-position in meters
-		//   Serial.print(", Yt= ");
-		//   Serial.print(robotOdom[1]);  //current y-position in meters
-		//   Serial.print(", Zr= ");
-		//   Serial.println(robotOdom[2]);  //current z-rotation in radians
-	}
-}
 
 #ifdef ROS_EN
 // Set tf data
@@ -379,9 +325,9 @@ void setTfData()
 			micro_ros_string_utilities_set(tfData[0].header.frame_id, "/odom");
 	tfData[0].child_frame_id =
 			micro_ros_string_utilities_set(tfData[0].child_frame_id, "/base_link");
-	tfData[0].transform.translation.x = robotOdom[0];
-	tfData[0].transform.translation.y = robotOdom[1];
-	euler_to_quat(0, 0, robotOdom[2], rosQuaternion);
+	tfData[0].transform.translation.x = target_odom_speed[0];
+	tfData[0].transform.translation.y = target_odom_speed[1];
+	euler_to_quat(0, 0, target_odom_speed[2], rosQuaternion);
 	tfData[0].transform.rotation.x = (double)rosQuaternion[1];
 	tfData[0].transform.rotation.y = (double)rosQuaternion[2];
 	tfData[0].transform.rotation.z = (double)rosQuaternion[3];
@@ -392,9 +338,7 @@ void setTfData()
 	messageTf.transforms.size = 1;
 	messageTf.transforms.data = tfData;
 }
-#endif //ROS_EN
 
-#ifdef ROS_EN
 // Set static tf data
 void setTfStaticData()
 {
@@ -424,21 +368,6 @@ void setup()
 	initHardware();
 	initPID();
 	initMatrix();
-
-	xTaskCreate(
-			speedControllerTask,   /* Task function. */
-			"speedControllerTask", /* String with name of task. */
-			100000,                /* Stack size in bytes. */
-			NULL,                  /* Parameter passed as input of the task */
-			5,                     /* Priority of the task. */
-			NULL);                 /* Task handle. */
-	xTaskCreate(
-			loggerTask,   /* Task function. */
-			"loggerTask", /* String with name of task. */
-			20000,        /* Stack size in bytes. */
-			NULL,         /* Parameter passed as input of the task */
-			1,            /* Priority of the task. */
-			NULL);        /* Task handle. */
 
 #ifdef ROS_EN
 #ifdef MICRO_ROS_TRANSPORT_ARDUINO_WIFI
@@ -479,44 +408,11 @@ void setup()
 	Serial.println(")");
 	delay(2000);
 #endif // MICRO_ROS_TRANSPORT_ARDUINO_WIFI
-#if MICRO_ROS_TRANSPORT_ARDUINO_SERIAL
+#ifdef MICRO_ROS_TRANSPORT_ARDUINO_SERIAL
 	set_microros_transports();
 #endif // MICRO_ROS_TRANSPORT_ARDUINO_SERIAL
 
-	allocator = rcl_get_default_allocator();
-	// create init_options
-	RCCHECK(rclc_support_init(&support, 0, NULL, &allocator));
-	// create node
-	RCCHECK(rclc_node_init_default(&node, "Edurob", "", &support));
-	// create tf publisher
-	RCCHECK(rclc_publisher_init_default(
-			&publisherTf,
-			&node,
-			ROSIDL_GET_MSG_TYPE_SUPPORT(tf2_msgs, msg, TFMessage),
-			"/tf"));
-
-	// create tf publisher
-	// Set publisher QoS
-
-	rmw_qos_profile_t rmw_qos_profile_tfstatic = {RMW_QOS_POLICY_HISTORY_KEEP_LAST, 10U, RMW_QOS_POLICY_RELIABILITY_RELIABLE, RMW_QOS_POLICY_DURABILITY_TRANSIENT_LOCAL, {0ULL, 0ULL}, {0ULL, 0ULL}, RMW_QOS_POLICY_LIVELINESS_SYSTEM_DEFAULT, {0ULL, 0ULL}, false};
-
-	RCCHECK(rclc_publisher_init(
-			&publisherTfStatic,
-			&node,
-			ROSIDL_GET_MSG_TYPE_SUPPORT(tf2_msgs, msg, TFMessage),
-			"/tf_static",
-			&rmw_qos_profile_tfstatic));
-
-	// create subscriber
-	RCCHECK(rclc_subscription_init_default(
-			&twistSubscriber,
-			&node,
-			ROSIDL_GET_MSG_TYPE_SUPPORT(geometry_msgs, msg, Twist),
-			"cmd_vel"));
-
-	// create executor
-	RCCHECK(rclc_executor_init(&executor, &support.context, 1, &allocator));
-	RCCHECK(rclc_executor_add_subscription(&executor, &twistSubscriber, &twistMessage, &subscription_callback, ON_NEW_DATA));
+	initROS2();
 
 #endif // ROS_EN
 }
@@ -543,7 +439,8 @@ void loop()
 		RCSOFTCHECK(rcl_publish(&publisherTf, &messageTfStatic, NULL));
 	}
 
-	RCCHECK(rclc_executor_spin_some(&executor, 0));
+	RCCHECK(rclc_executor_spin_some(&executor, 500));
+	task_drive();
 #endif // ROS_EN
 	delay(10);
 }
