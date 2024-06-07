@@ -222,36 +222,6 @@ bool initHardware()
 	return true;
 }
 
-// Init speed controller
-void initPID()
-{
-	for (int i = 0; i < NumMotors; i++)
-	{
-		speedControllerParam[i].input = 0;
-		speedControllerParam[i].output = 0;
-		speedControllerParam[i].setpoint = 0;
-		speedControllerParam[i].p = 0.8;
-		speedControllerParam[i].i = 0.0;
-		speedControllerParam[i].d = 0.0;
-		speedControllerParam[i].sampleTimeMs = sampleTime;
-		speedControllerParam[i].outMin = -100.0; // %
-		speedControllerParam[i].outMax = +100.0; // %
-
-		speedController[i] = new AutoPID(
-			&speedControllerParam[i].input, 
-			&speedControllerParam[i].setpoint, 
-			&speedControllerParam[i].output, 
-			speedControllerParam[i].outMin, 
-			speedControllerParam[i].outMax, 
-			speedControllerParam[i].p, 
-			speedControllerParam[i].i, 
-			speedControllerParam[i].d
-		);
-
-		speedController[i]->setTimeStep(speedControllerParam[i].sampleTimeMs);
-		speedController[i]->setBangBang(0, 0); // Disable BangBang-Control
-	}
-}
 
 // Init platform specific kinematics
 void initMatrix()
@@ -276,44 +246,12 @@ void task_drive()
 	target_wheel_speed = (1 / wheelRadius) * kinematik * target_robot_speed; // rad/s
 	target_odom_speed = target_wheel_speed / incrementsToRad; // increments/s
 
-	// Read
-	for(int i = 0; i < NumMotors; i++)
-	{
-		// Store old encoder values and read new ones
-		encoderOld[i] = encoderNew[i];
-		encoderNew[i] = EncoderDir[i] * WheelEncoder[i].getCount();
-
-		const double measured_odom = (encoderNew[i] - encoderOld[i]) / (millis()/1000u);
-		const double measured_duty = measured_odom * Rad2PWM;
-
-		speedControllerParam[i].input = min(100.0, max(-100.0, measured_duty));
-
-		const double target_duty = target_odom_speed[i] * Rad2PWM;
-		speedControllerParam[i].setpoint = min(100.0, max(-100.0, target_duty)); // dutycycle in %
-		// Serial.print(target_wheel_speed[i]);
-		// Serial.print(" -> ");
-		// Serial.print(target_odom_speed[i]);
-		// Serial.print(" -> ");
-		// Serial.println(target_duty);
-	}
-
-	// Plan
-	for(int i = 0; i < NumMotors; i++)
-		speedController[i]->run();
-
 	// Act
 	for(int i = 0; i < NumMotors; i++)
+	{
+		const double target_duty = target_odom_speed[i] * Rad2PWM;
 		MotorPWM[i].setPWM(MotorDir[i] * speedControllerParam[i].output);
-
-	Serial.printf(">i1:%.4f\n", speedControllerParam[0].input);
-	Serial.printf(">i2:%.4f\n", speedControllerParam[1].input);
-	Serial.printf(">i3:%.4f\n", speedControllerParam[2].input);
-	Serial.printf(">i4:%.4f\n", speedControllerParam[3].input);
-
-	Serial.printf(">o1:%.4f\n", speedControllerParam[0].output);
-	Serial.printf(">o2:%.4f\n", speedControllerParam[1].output);
-	Serial.printf(">o3:%.4f\n", speedControllerParam[2].output);
-	Serial.printf(">o4:%.4f\n", speedControllerParam[3].output);
+	}
 }
 
 
@@ -366,7 +304,6 @@ void setup()
 {
 	Serial.begin(115200);
 	initHardware();
-	initPID();
 	initMatrix();
 
 #ifdef ROS_EN
