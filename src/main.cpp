@@ -29,7 +29,6 @@
 
 #include <dcpwm.h>       // PWM
 #include <ESP_Counter.h> // Encoder
-#include <AutoPID.h>     // PID Library https://github.com/r-downing/AutoPID
 #include <Eigen.h>       // Linear math
 #include <Eigen/QR>      // Calls inverse, determinant, LU decomp., etc.
 using namespace Eigen;   // Eigen related statement; simplifies syntax for declaration of matrices
@@ -69,8 +68,6 @@ using namespace Eigen;   // Eigen related statement; simplifies syntax for decla
 // Hardware
 static ESP_Counter WheelEncoder[NumMotors];      // Hardware-Encoder-Units
 static DCPWM MotorPWM[NumMotors];                // Hardware-PWM-Units
-static AutoPID *speedController[NumMotors];      // PID-Units
-static pidParam speedControllerParam[NumMotors]; // PID-Parameter
 
 // Variables
 int64_t encoderOld[NumMotors];       // Last encoder values
@@ -246,12 +243,16 @@ void task_drive()
 	target_wheel_speed = (1 / wheelRadius) * kinematik * target_robot_speed; // rad/s
 	target_odom_speed = target_wheel_speed / incrementsToRad; // increments/s
 
+	Serial.printf("[%.2f, %.2f, %.2f, %.2f]\n", target_wheel_speed[0], target_wheel_speed[1], target_wheel_speed[2], target_wheel_speed[3]);
+
 	// Act
 	for(int i = 0; i < NumMotors; i++)
 	{
 		const double target_duty = target_odom_speed[i] * Rad2PWM;
-		MotorPWM[i].setPWM(MotorDir[i] * speedControllerParam[i].output);
+		Serial.printf("%.2f, ", target_duty);
+		MotorPWM[i].setPWM(MotorDir[i] * target_duty);
 	}
+	Serial.println();
 }
 
 
